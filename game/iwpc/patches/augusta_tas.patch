@@ -1,0 +1,18 @@
+--- res://Level/Melody/奥古斯塔/奥古斯塔.gd
++++ res://Level/Melody/奥古斯塔/奥古斯塔.gd
+@@
++func _wait_beats_aligned(beats: int, my_run_id: int) -> bool:
++	var beat_duration: float = GameData.beat_duration
++	var current_time: float = AudioManager.get_tas_bgm_time()
++	var current_beat: float = current_time / beat_duration
++	var shifted_beat: float = current_beat - bias_beat
++	var target_beat: float = ceil(shifted_beat / beats) * beats + bias_beat
++	var wait_time: float = target_beat * beat_duration - current_time
++	const MIN_WAIT_SEC: float = 0.05
++	if wait_time < MIN_WAIT_SEC:
++		target_beat += beats
++		wait_time = target_beat * beat_duration - current_time
++	if wait_time < MIN_WAIT_SEC:
++		wait_time = beats * beat_duration
++	await get_tree().create_timer(wait_time).timeout
++	return my_run_id == run_id and is_active

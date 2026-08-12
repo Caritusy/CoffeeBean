@@ -1,0 +1,30 @@
+--- res://Level/Melody/弗洛洛_小提琴/弗洛洛_小提琴.gd
++++ res://Level/Melody/弗洛洛_小提琴/弗洛洛_小提琴.gd
+@@
+ func angry():
+ 	if is_end:
+ 		return
+ 	_stop_angry_tween()
+-
+-	var beat_duration = 60.0 / bpm
+-	var wait_time = beat_duration * 1.5
+-
+-	_angry_tween = create_tween()
+-
+-	_angry_tween.tween_property(animated_sprite_2d, "scale", Vector2.ZERO, beat_duration * 0.1)\
+-	.set_trans(Tween.TRANS_LINEAR)
+-
+-	_angry_tween.tween_interval(wait_time)
+-
+-	_angry_tween.tween_callback( func():
+-		AudioManager.trigger_sfx(SFX_CHANGE)
+-	)
+-
+-	_angry_tween.tween_property(animated_sprite_2d, "scale", Vector2.ONE * 3.15, 0.1)\
+-	.set_trans(Tween.TRANS_LINEAR)
+-	_angry_tween.tween_callback( func():
+-		_angry_tween = null
+-	)
++	# CoffeeBean route: keep the violin at its normal scale and let the
++	# existing end_and_release action advance directly to the candy phase.
++	animated_sprite_2d.scale = Vector2.ONE

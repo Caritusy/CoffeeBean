@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CoffeeBean IWPC TAS</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0e0f;
+      --panel: #111617;
+      --panel-raised: #171d1f;
+      --line: #2c3639;
+      --line-strong: #415055;
+      --text: #e6eeea;
+      --muted: #91a19b;
+      --faint: #65746f;
+      --accent: #53bd84;
+      --accent-soft: #19392a;
+      --danger: #d67b72;
+      --danger-soft: #3b211f;
+      --radius: 4px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font: 13px/1.35 system-ui, sans-serif; }
+    body { display: grid; grid-template-rows: 44px minmax(0, 1fr) 72px; height: 100dvh; min-height: 100dvh; overflow: hidden; }
+    button, input { font: inherit; }
+    button { min-width: 0; border: 1px solid var(--line-strong); border-radius: var(--radius); background: #20282a; color: var(--text); cursor: pointer; }
+    button:hover { border-color: var(--accent); background: #263033; }
+    button:active { transform: translateY(1px); }
+    button:focus-visible, #game-frame:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    button:disabled { border-color: var(--line); color: var(--faint); cursor: not-allowed; opacity: .62; transform: none; }
+    #topbar { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 0 14px; border-bottom: 1px solid var(--line); background: #101415; }
+    #topbar strong { font-size: 14px; font-weight: 700; }
+    #topbar span { overflow: hidden; color: var(--muted); font: 11px ui-monospace, "Cascadia Mono", monospace; text-overflow: ellipsis; white-space: nowrap; }
+    #view-actions { display: flex; flex: 0 0 auto; gap: 5px; margin-left: auto; }
+    #view-actions button { min-height: 28px; padding: 0 8px; font-size: 10px; white-space: nowrap; }
+    #view-actions button[data-active="true"] { border-color: var(--accent); background: var(--accent-soft); color: #bce8cd; }
+    #workspace { display: grid; grid-template-columns: 292px minmax(0, 1fr); min-width: 0; min-height: 0; }
+    #tas-sidebar { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: auto; border-right: 1px solid var(--line); background: var(--panel); scrollbar-color: var(--line-strong) var(--panel); }
+    .sidebar-section { flex: 0 0 auto; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+    .section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+    .section-heading h2 { margin: 0; color: #cbd7d2; font-size: 11px; font-weight: 700; }
+    .section-heading span { color: var(--faint); font: 10px ui-monospace, "Cascadia Mono", monospace; }
+    #coffee-status { display: -webkit-box; overflow: hidden; margin: 0 0 6px; color: var(--accent); font: 11px ui-monospace, "Cascadia Mono", monospace; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+    .runtime-list { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 3px 8px; margin: 0; }
+    .runtime-list dt { color: var(--faint); }
+    .runtime-list dd { overflow: hidden; margin: 0; color: #cbd6d1; font: 11px ui-monospace, "Cascadia Mono", monospace; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+    .runtime-list dd.fps-setting { display: flex; justify-content: flex-end; align-items: center; gap: 5px; overflow: visible; }
+    #frame-rate { width: 62px; min-height: 24px; padding: 2px 5px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: #0d1112; color: var(--text); font: 11px ui-monospace, "Cascadia Mono", monospace; text-align: right; }
+    #error { display: block; margin-top: 8px; color: var(--danger); font-size: 11px; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .project-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .project-actions button { min-height: 28px; padding: 0 8px; white-space: nowrap; }
+    #project-status { display: -webkit-box; overflow: hidden; margin-top: 7px; color: var(--muted); font: 10px/1.4 ui-monospace, "Cascadia Mono", monospace; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+    .hitbox-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; margin: 0; }
+    .hitbox-legend span { display: flex; align-items: center; min-width: 0; gap: 6px; color: var(--muted); font-size: 10px; }
+    .hitbox-legend i { display: block; flex: 0 0 10px; width: 10px; height: 10px; border: 1px solid rgb(255 255 255 / .35); border-radius: 2px; }
+    .hitbox-legend .brick { background: #2e8cff; }
+    .hitbox-legend .lethal { background: #ff291f; }
+    .hitbox-legend .player { background: #33ff5c; }
+    .hitbox-legend .interactable { background: #c738ff; }
+    .hitbox-legend .attack { background: #080808; }
+    #savestate-list { display: grid; }
+    .savestate-section { flex: 1 1 0; min-height: 120px; overflow: auto; }
+    .state-row { display: grid; grid-template-columns: 24px minmax(44px, 1fr) repeat(3, 42px); gap: 5px; align-items: center; min-height: 40px; border-top: 1px solid #232b2d; }
+    .state-row:first-child { border-top: 0; }
+    .state-row > b { color: var(--faint); font: 700 11px ui-monospace, "Cascadia Mono", monospace; text-align: center; }
+    .state-row[data-filled="true"] > b { color: var(--accent); }
+    .state-meta { overflow: hidden; color: var(--muted); font: 10px ui-monospace, "Cascadia Mono", monospace; text-overflow: ellipsis; white-space: nowrap; }
+    .state-row button { min-height: 27px; padding: 0 4px; font-size: 10px; white-space: nowrap; }
+    .state-row [data-slot-action="play"]:not(:disabled) { border-color: #397957; background: var(--accent-soft); color: #bce8cd; }
+    #slot-summary { display: block; margin-top: 7px; color: var(--faint); font: 10px ui-monospace, "Cascadia Mono", monospace; overflow-wrap: anywhere; }
+    .run-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .run-actions button { min-height: 32px; }
+    #takeover-run:not(:disabled) { border-color: #397957; background: var(--accent-soft); color: #bce8cd; }
+    #reset-run { border-color: #74403c; background: var(--danger-soft); color: #f0b7b1; }
+    #reset-run:hover { border-color: var(--danger); background: #482724; }
+    main, #game-shell { min-width: 0; min-height: 0; width: 100%; height: 100%; }
+    main { overflow: hidden; background: #050607; }
+    #game-frame { display: block; width: 100%; height: 100%; border: 0; outline: none; background: #050607; }
+    #tas-panel { display: grid; grid-template-columns: auto minmax(180px, 1fr); gap: 16px; align-items: center; min-width: 0; padding: 8px 14px; border-top: 1px solid var(--line-strong); background: #101617; }
+    .tas-keys { display: grid; grid-template-columns: repeat(5, 58px); gap: 7px; }
+    .tas-key { display: grid; grid-template-rows: 14px 30px; min-width: 0; cursor: pointer; }
+    .tas-key:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+    .tas-key label { color: var(--muted); font-size: 10px; text-align: center; }
+    .tas-key[data-tas-input="respawn"] label { font-size: 8px; }
+    .key-state { display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius); background: #20282b; }
+    .key-state i { display: block; min-width: 0; background: #20282b; }
+    .key-state i + i { border-left: 1px solid #121719; }
+    .tas-key[data-state="press"] .key-state i:last-child,
+    .tas-key[data-state="release"] .key-state i:first-child,
+    .tas-key[data-state="held"] .key-state i { background: var(--accent); }
+    .tas-key[data-state="tap"] .key-state i { background: #c59d4e; }
+    .tas-meta { min-width: 0; }
+    .tas-meta strong { display: block; overflow: hidden; color: #dce7e2; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .tas-meta span { display: block; overflow: hidden; margin-top: 3px; color: var(--faint); font: 10px ui-monospace, "Cascadia Mono", monospace; text-overflow: ellipsis; white-space: nowrap; }
+    dialog { width: min(420px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel-raised); color: var(--text); box-shadow: 0 18px 60px rgb(0 0 0 / .48); }
+    dialog::backdrop { background: rgb(2 4 5 / .72); }
+    dialog form { padding: 18px; }
+    dialog h2 { margin: 0 0 7px; font-size: 16px; }
+    dialog p { margin: 0; color: var(--muted); }
+    dialog menu { display: flex; justify-content: flex-end; gap: 7px; margin: 18px 0 0; padding: 0; }
+    dialog button { min-width: 86px; min-height: 34px; padding: 0 12px; }
+    #confirm-reset { border-color: #8a4b45; background: var(--danger-soft); color: #ffd0ca; }
+    @media (max-width: 900px) {
+      #workspace { grid-template-columns: 252px minmax(0, 1fr); }
+      .state-row { grid-template-columns: 22px minmax(32px, 1fr) repeat(3, 36px); gap: 3px; }
+    }
+    @media (max-width: 720px) {
+      html, body { height: auto; overflow: auto; }
+      body { grid-template-rows: 44px auto auto; min-height: 100dvh; }
+      #workspace { grid-template-columns: 1fr; }
+      main { grid-row: 1; height: 58dvh; min-height: 420px; }
+      #tas-sidebar { display: block; grid-row: 2; overflow: visible; border-top: 1px solid var(--line); border-right: 0; }
+      .savestate-section { overflow: visible; }
+      #tas-panel { grid-template-columns: 1fr; }
+      .tas-keys { grid-template-columns: repeat(5, minmax(44px, 58px)); }
+    }
+  </style>
+</head>
+<body>
+  <header id="topbar"><strong>CoffeeBean</strong><span>IWPC / Godot 4.4.1 / charge-only build</span><div id="view-actions" aria-label="Runtime view"><button id="hitbox-view" type="button" data-active="true">TAS / Hitboxes</button><button id="normal-view" type="button" data-active="false">Production / Clean</button></div></header>
+  <div id="workspace">
+    <aside id="tas-sidebar" aria-label="TAS workspace">
+      <section class="sidebar-section">
+        <div class="section-heading"><h2>Session</h2><span id="run-state">HOOKING</span></div>
+        <p id="coffee-status">Waiting for CoffeeBean...</p>
+        <dl class="runtime-list">
+          <dt>Engine</dt><dd id="status">Loading...</dd>
+          <dt>Instance</dt><dd id="instance-value">--</dd>
+          <dt>Frame</dt><dd id="frame-value">0</dd>
+          <dt>Playback</dt><dd id="playback-value">RECORD</dd>
+          <dt>Speed</dt><dd id="speed-value">paused</dd>
+          <dt>Project FPS</dt><dd class="fps-setting"><input id="frame-rate" type="number" value="120" aria-label="Godot project frame rate" readonly><span>Hz</span></dd>
+          <dt>Actual FPS</dt><dd id="actual-fps-value">0 Hz</dd>
+          <dt>Rerecords</dt><dd id="rerecord-value">0</dd>
+          <dt>RNG</dt><dd id="rng-mode">waiting</dd>
+          <dt>Address</dt><dd id="rng-address">--</dd>
+          <dt>Seed</dt><dd id="rng-seed">--</dd>
+          <dt>State</dt><dd id="rng-state">--</dd>
+        </dl>
+        <span id="error" role="alert"></span>
+      </section>
+
+      <section class="sidebar-section">
+        <div class="section-heading"><h2>Project</h2><span>.cbproj</span></div>
+        <div class="project-actions">
+          <button id="save-project" type="button">Save project</button>
+          <button id="open-project" type="button">Open project</button>
+          <input id="project-file" type="file" accept=".cbproj,application/x-coffeebean-project" hidden>
+        </div>
+        <span id="project-status">No project loaded</span>
+      </section>
+
+      <section class="sidebar-section">
+        <div class="section-heading"><h2>Hitbox palette</h2><span>debug view</span></div>
+        <div class="hitbox-legend" aria-label="Hitbox colors">
+          <span><i class="brick"></i>Brick</span>
+          <span><i class="lethal"></i>Lethal</span>
+          <span><i class="player"></i>Player</span>
+          <span><i class="interactable"></i>Interactable</span>
+          <span><i class="attack"></i>Player attack</span>
+        </div>
+      </section>
+
+      <section class="sidebar-section savestate-section">
+        <div class="section-heading"><h2>Savestates</h2><span>Q/W use slot 1</span></div>
+        <div id="savestate-list">
+          <div class="state-row" data-state-slot="0" data-filled="false"><b>1</b><span class="state-meta">Empty</span><button type="button" data-slot-action="save" aria-label="Save to slot 1" title="Save to slot 1">Save</button><button type="button" data-slot-action="load" aria-label="Load save data 1" title="Load save data 1" disabled>Load</button><button type="button" data-slot-action="play" aria-label="Playback with save data 1" title="Playback with save data 1" disabled>Play</button></div>
+          <div class="state-row" data-state-slot="1" data-filled="false"><b>2</b><span class="state-meta">Empty</span><button type="button" data-slot-action="save" aria-label="Save to slot 2" title="Save to slot 2">Save</button><button type="button" data-slot-action="load" aria-label="Load save data 2" title="Load save data 2" disabled>Load</button><button type="button" data-slot-action="play" aria-label="Playback with save data 2" title="Playback with save data 2" disabled>Play</button></div>
+          <div class="state-row" data-state-slot="2" data-filled="false"><b>3</b><span class="state-meta">Empty</span><button type="button" data-slot-action="save" aria-label="Save to slot 3" title="Save to slot 3">Save</button><button type="button" data-slot-action="load" aria-label="Load save data 3" title="Load save data 3" disabled>Load</button><button type="button" data-slot-action="play" aria-label="Playback with save data 3" title="Playback with save data 3" disabled>Play</button></div>
+          <div class="state-row" data-state-slot="3" data-filled="false"><b>4</b><span class="state-meta">Empty</span><button type="button" data-slot-action="save" aria-label="Save to slot 4" title="Save to slot 4">Save</button><button type="button" data-slot-action="load" aria-label="Load save data 4" title="Load save data 4" disabled>Load</button><button type="button" data-slot-action="play" aria-label="Playback with save data 4" title="Playback with save data 4" disabled>Play</button></div>
+          <div class="state-row" data-state-slot="4" data-filled="false"><b>5</b><span class="state-meta">Empty</span><button type="button" data-slot-action="save" aria-label="Save to slot 5" title="Save to slot 5">Save</button><button type="button" data-slot-action="load" aria-label="Load save data 5" title="Load save data 5" disabled>Load</button><button type="button" data-slot-action="play" aria-label="Playback with save data 5" title="Playback with save data 5" disabled>Play</button></div>
+          <div class="state-row" data-state-slot="5" data-filled="false"><b>6</b><span class="state-meta">Empty</span><button type="button" data-slot-action="save" aria-label="Save to slot 6" title="Save to slot 6">Save</button><button type="button" data-slot-action="load" aria-label="Load save data 6" title="Load save data 6" disabled>Load</button><button type="button" data-slot-action="play" aria-label="Playback with save data 6" title="Playback with save data 6" disabled>Play</button></div>
+          <div class="state-row" data-state-slot="6" data-filled="false"><b>7</b><span class="state-meta">Empty</span><button type="button" data-slot-action="save" aria-label="Save to slot 7" title="Save to slot 7">Save</button><button type="button" data-slot-action="load" aria-label="Load save data 7" title="Load save data 7" disabled>Load</button><button type="button" data-slot-action="play" aria-label="Playback with save data 7" title="Playback with save data 7" disabled>Play</button></div>
+          <div class="state-row" data-state-slot="7" data-filled="false"><b>8</b><span class="state-meta">Empty</span><button type="button" data-slot-action="save" aria-label="Save to slot 8" title="Save to slot 8">Save</button><button type="button" data-slot-action="load" aria-label="Load save data 8" title="Load save data 8" disabled>Load</button><button type="button" data-slot-action="play" aria-label="Playback with save data 8" title="Playback with save data 8" disabled>Play</button></div>
+        </div>
+        <span id="slot-summary">0/8 slots used</span>
+      </section>
+
+      <section class="sidebar-section run-actions"><button id="takeover-run" type="button" aria-label="Take over recording" title="Take over recording from the paused replay frame" disabled>Take over</button><button id="reset-run" type="button">Reset run</button></section>
+    </aside>
+
+    <main><div id="game-shell"><iframe id="game-frame" src="game-hitbox.html" title="IWPC game with hitboxes" allow="autoplay; fullscreen" tabindex="0"></iframe></div></main>
+  </div>
+
+  <footer id="tas-panel">
+    <div class="tas-keys" aria-label="Next frame input states">
+      <div class="tas-key" role="button" tabindex="0" title="Queue a tap" aria-label="Tap left" data-tas-input="left" data-state="neutral"><label>A / LEFT</label><div class="key-state"><i></i><i></i></div></div>
+      <div class="tas-key" role="button" tabindex="0" title="Queue a tap" aria-label="Tap right" data-tas-input="right" data-state="neutral"><label>D / RIGHT</label><div class="key-state"><i></i><i></i></div></div>
+      <div class="tas-key" role="button" tabindex="0" title="Queue a tap" aria-label="Tap attack" data-tas-input="action" data-state="neutral"><label>J / ATTACK</label><div class="key-state"><i></i><i></i></div></div>
+      <div class="tas-key" role="button" tabindex="0" title="Queue a tap" aria-label="Tap jump" data-tas-input="jump" data-state="neutral"><label>K / JUMP</label><div class="key-state"><i></i><i></i></div></div>
+      <div class="tas-key" role="button" tabindex="0" title="Queue a tap" aria-label="Tap respawn" data-tas-input="respawn" data-state="neutral"><label>R / RESPAWN</label><div class="key-state"><i></i><i></i></div></div>
+    </div>
+    <div class="tas-meta"><strong id="tas-mode">Frame input ready</strong><span>P TOGGLE / SPACE +1F / Q SAVE 1 / W LOAD 1</span></div>
+  </footer>
+
+  <dialog id="reset-dialog">
+    <form method="dialog">
+      <h2>Reset current run?</h2>
+      <p>Current TAS input and RNG history after frame 0 will be discarded.</p>
+      <menu><button value="cancel">Cancel</button><button id="confirm-reset" value="reset">Reset</button></menu>
+    </form>
+  </dialog>
+
+  <script src="workspace.js?v=0.9.8"></script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>IWPC Runtime</title>
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #050607; }
+    #game-canvas { display: block; width: 100% !important; height: 100% !important; border: 0; outline: none; background: #050607; }
+  </style>
+</head>
+<body>
+  <canvas id="game-canvas" tabindex="1">Canvas is required.</canvas>
+  <script src="../../coffee-main.js?v=0.9.8"></script>
+  <script src="godot.js"></script>
+  <script>
+    (() => {
+      const CHANNEL = "coffeebean";
+      const canvas = document.getElementById("game-canvas");
+      const runtimeId = typeof crypto.randomUUID === "function" ? crypto.randomUUID().slice(0, 8) : Math.random().toString(16).slice(2, 10);
+      const runtimeStartedAt = performance.timeOrigin;
+      const post = (type, detail) => window.parent.postMessage({ channel: CHANNEL, type, detail }, window.location.origin);
+      const postEngine = (text) => post("engine", { text, runtimeId, runtimeStartedAt });
+
+      // Keep the new Godot document at frame zero until CoffeeBean begins
+      // recording or restores a checkpoint; no untracked startup frames.
+      if (window.__coffeeBean) window.__coffeeBean.command("pause");
+
+      document.addEventListener(`${CHANNEL}:status`, (event) => post("status", event.detail));
+      document.addEventListener(`${CHANNEL}:game-reload-request`, (event) => {
+        if (!event.detail || !event.detail.fullReload) return;
+        event.preventDefault();
+        postEngine("Reloading IWPC frame...");
+        window.location.reload();
+      });
+      document.addEventListener(`${CHANNEL}:reset-request`, (event) => {
+        event.preventDefault();
+        post("reset-request", null);
+      });
+
+      if (!window.Engine) { post("error", "Godot loader did not initialize."); return; }
+      const game = new Engine({
+        executable: "index",
+        mainPack: "index_charge_fast.pck",
+        canvas,
+        canvasResizePolicy: 1,
+        focusCanvas: true,
+        unloadAfterInit: false,
+        onProgress: (current, total) => postEngine(total ? `Loading ${Math.round(current / total * 100)}%` : "Loading..."),
+        onExit: (code) => postEngine(`Exited (${code})`)
+      });
+      window.iwpcEngine = game;
+      postEngine("Starting IWPC...");
+      game.startGame("index").then(() => {
+        postEngine("IWPC running");
+        if (window.__coffeeBean) window.__coffeeBean.beginRecording();
+        post("ready", { runtimeId, runtimeStartedAt });
+      }).catch((reason) => {
+        console.error(reason);
+        post("error", reason && reason.message ? reason.message : String(reason));
+        postEngine("Start failed");
+      });
+      canvas.addEventListener("click", () => canvas.focus());
+    })();
+  </script>
+</body>
+</html>

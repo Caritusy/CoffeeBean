@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CoffeeBean</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">INSTANT COFFEE</p>
+        <h1>CoffeeBean</h1>
+      </div>
+      <label class="switch" title="Enable or disable the page hook">
+        <input id="enabled" type="checkbox">
+        <span></span>
+      </label>
+    </header>
+
+    <section class="status-panel" aria-live="polite">
+      <div class="status-line"><span id="connectionDot" class="dot"></span><strong id="connectionText">Checking page</strong></div>
+      <div class="metrics">
+        <div><span>FRAME</span><b id="frame">0</b></div>
+        <div><span>MODE</span><b id="mode">Normal</b></div>
+        <div><span>FPS</span><b id="fps">120</b></div>
+        <div><span>HOOK</span><b id="hook">Waiting</b></div>
+      </div>
+    </section>
+
+    <section class="quick-actions">
+      <button data-action="pause">Pause / Resume</button>
+      <button data-action="step">Step frame</button>
+      <button data-action="play">Play</button>
+      <button id="takeover" data-action="takeover" disabled>Take over</button>
+      <button data-action="reset">Reset</button>
+    </section>
+
+    <section class="section">
+      <div class="section-heading"><h2>Frame input</h2><span class="badge">PRESS / HOLD / RELEASE</span></div>
+      <label class="field"><span>Speed</span><select id="speed" disabled><option value="normal">Project normal</option></select></label>
+      <label class="field"><span>Project FPS</span><input id="frameRate" type="number" value="120" readonly title="IWPC project physics tick rate"></label>
+      <div class="input-state-grid">
+        <div><span>Left</span><b data-input-state="left">Neutral</b></div>
+        <div><span>Right</span><b data-input-state="right">Neutral</b></div>
+        <div><span>Attack</span><b data-input-state="action">Neutral</b></div>
+        <div><span>Jump</span><b data-input-state="jump">Neutral</b></div>
+        <div><span>Respawn</span><b data-input-state="respawn">Neutral</b></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-heading"><h2>Savestate</h2><span class="badge">REPLAY CHECKPOINT</span></div>
+      <label class="field"><span>Slot</span><select id="stateSlot"><option value="0">Slot 1</option><option value="1">Slot 2</option><option value="2">Slot 3</option><option value="3">Slot 4</option><option value="4">Slot 5</option><option value="5">Slot 6</option><option value="6">Slot 7</option><option value="7">Slot 8</option></select></label>
+      <div class="state-actions"><button id="saveSlot">Save</button><button id="loadSlot">Load</button><button id="playSlot">Play</button></div>
+      <p id="stateInfo">Empty slot</p>
+    </section>
+
+    <section class="section">
+      <div class="section-heading"><h2>Godot RNG</h2><span class="badge" id="rngStatus">SCANNING</span></div>
+      <div class="rng-readout">
+        <span>Seed</span><code id="rngSeedValue">--</code>
+        <span>State</span><code id="rngStateValue">--</code>
+        <span>Next randf</span><code id="rngNext">--</code>
+        <span>Captured</span><code id="rngFrames">0 frames</code>
+      </div>
+      <div class="toggle-row">
+        <label><input id="rngRecord" type="checkbox"> Record each frame</label>
+        <label><input id="rngPlayback" type="checkbox"> Restore on replay</label>
+      </div>
+      <label class="stacked-field"><span>Seed override</span><div><input id="rngSeed" spellcheck="false" placeholder="0x0000000000000000"><button id="applySeed">Apply seed</button></div></label>
+      <label class="stacked-field"><span>Raw PCG state</span><div><input id="rngState" spellcheck="false" placeholder="0x0000000000000000"><button id="applyState">Apply state</button></div></label>
+    </section>
+
+    <section class="section">
+      <div class="section-heading"><h2>TAS data</h2><span class="badge">INPUT + RNG</span></div>
+      <textarea id="tasData" rows="3" spellcheck="false" placeholder="CB2:..."></textarea>
+      <div class="tas-actions">
+        <button data-action="new-recording">New</button>
+        <button id="copyTas">Copy current</button>
+        <button id="loadTas">Load replay</button>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-heading"><h2>Interface keys</h2><span class="hint">Click a key, then press a key</span></div>
+      <div class="key-grid" id="controlKeys"></div>
+    </section>
+
+    <section class="section">
+      <div class="section-heading"><h2>Game keys</h2><span class="hint">Sent to the page</span></div>
+      <div class="key-grid" id="gameKeys"></div>
+    </section>
+
+    <footer><button id="save" class="primary">Apply to page</button><span id="saveState"></span></footer>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

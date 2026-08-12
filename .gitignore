@@ -1,0 +1,16 @@
+# Local server output
+test/server.out.log
+test/server.err.log
+
+# Game/runtime binaries are distributed through GitHub Releases, not Git history.
+game/iwpc/*.pck
+game/iwpc/index.wasm
+game/iwpc/patches/*.gdc
+games/
+dist/
+
+# Local editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

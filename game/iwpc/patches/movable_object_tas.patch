@@ -1,0 +1,13 @@
+--- res://Level/Melody/MovableObject.gd
++++ res://Level/Melody/MovableObject.gd
+@@
+ func _wait_beats_aligned(beats: int, my_run_id: int) -> bool:
+ 	var beat_duration: float = GameData.beat_duration
+-	var current_time: float = AudioManager.bgm_player.get_playback_position()
+-	current_time += AudioServer.get_time_since_last_mix()
+-	current_time -= AudioServer.get_output_latency()
+-
+-	if OS.has_feature("web"):
+-		current_time += GameData.web_audio_sync_bias
++	# Fixed 120 Hz TAS time, independent of browser audio-mixer latency.
++	var current_time: float = AudioManager.get_bgm_time()
