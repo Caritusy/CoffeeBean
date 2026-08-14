@@ -6,29 +6,153 @@ const PLAYER := Color(0.20, 1.0, 0.36, 0.96)
 const INTERACTABLE := Color(0.78, 0.22, 1.0, 0.96)
 const ATTACK := Color(0.04, 0.04, 0.04, 1.0)
 const LINE_WIDTH := 2.5
+const TAS_FRAME_RATE := 120.0
+const ATTACK_NORMAL_TOTAL_BEATS := 2.0
+const ATTACK_NORMAL_STOP_DISTANCE := 16.0
+const ATTACK_UP_TOTAL_BEATS := 1.5
+const ATTACK_UP_STOP_DISTANCE := 32.0
+const TELEMETRY_INTERVAL := 2
 
 var _shape_entries: Array[Dictionary] = []
 var _polygon_entries: Array[Dictionary] = []
+var _boss: Node = null
+var _physics_tick := 0
+var _armor_release_tick := -1
+var _last_boss_active := false
 
 func _ready() -> void:
     get_tree().node_added.connect(_on_node_added)
     call_deferred("_scan_existing")
 
 func _physics_process(_delta: float) -> void:
+    _physics_tick += 1
     _sync_shapes()
     _sync_polygons()
+    _update_boss_telemetry()
 
 func _scan_existing() -> void:
     _scan(get_tree().root)
 
 func _scan(node: Node) -> void:
+    _consider_boss(node)
     _configure(node)
     for child in node.get_children():
         _scan(child)
 
 func _on_node_added(node: Node) -> void:
+    _consider_boss(node)
     if node is CollisionShape2D or node is CollisionPolygon2D:
         _configure.call_deferred(node)
+
+func _consider_boss(node: Node) -> void:
+    if _boss == null and node.has_method("set_super_armor") and node.has_method("update_boss_action"):
+        _boss = node
+
+func _update_boss_telemetry() -> void:
+    if not OS.has_feature("web"):
+        return
+    if not is_instance_valid(_boss):
+        _boss = null
+        _armor_release_tick = -1
+        if _physics_tick % 120 == 0:
+            _send_boss_telemetry({"active": false})
+        return
+
+    var active := bool(_boss.get("is_active_boss"))
+    if not active:
+        _armor_release_tick = -1
+        if _last_boss_active or _physics_tick % 120 == 0:
+            _send_boss_telemetry({"active": false})
+        _last_boss_active = false
+        return
+
+    _last_boss_active = true
+    if _physics_tick % TELEMETRY_INTERVAL != 0:
+        return
+    var sprite := _boss.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
+    var super_armor := bool(_boss.get("is_super_armor"))
+    var remaining_frames := _super_armor_frames(sprite, super_armor)
+    _send_boss_telemetry({
+        "active": true,
+        "superArmor": super_armor,
+        "remainingFrames": remaining_frames,
+        "nextAction": _next_action_label(),
+        "animation": str(sprite.animation) if sprite != null else ""
+    })
+
+func _super_armor_frames(sprite: AnimatedSprite2D, super_armor: bool) -> int:
+    if not super_armor:
+        _armor_release_tick = -1
+        return 0
+    if sprite == null or not str(sprite.animation) in ["AttackNormalReady", "AttackUpReady"]:
+        _armor_release_tick = -1
+        return -1
+    if sprite.is_playing():
+        _armor_release_tick = -1
+        return ceili((_animation_seconds_remaining(sprite) + _attack_wait_seconds(str(sprite.animation))) * TAS_FRAME_RATE)
+    if _armor_release_tick < _physics_tick:
+        _armor_release_tick = _physics_tick + ceili(_attack_wait_seconds(str(sprite.animation)) * TAS_FRAME_RATE)
+    return maxi(0, _armor_release_tick - _physics_tick)
+
+func _next_action_label() -> String:
+    if _boss.has_method("coffee_bean_next_action"):
+        var action := int(_boss.call("coffee_bean_next_action"))
+        if action == 3:
+            return "\u5347\u9f99\uff08\u9ad8\u5ea6\u89e6\u53d1\uff09"
+    return "\u76f4\u62f3\uff08\u4f4e\u4f4d\uff09"
+
+func _animation_seconds_remaining(sprite: AnimatedSprite2D) -> float:
+    if sprite.sprite_frames == null:
+        return 0.0
+    var animation := sprite.animation
+    var frame_count := sprite.sprite_frames.get_frame_count(animation)
+    var playing_speed := absf(sprite.get_playing_speed())
+    if frame_count <= 0 or playing_speed <= 0.0:
+        return 0.0
+    var remaining := 0.0
+    for frame_index in range(sprite.frame, frame_count):
+        var duration := sprite.sprite_frames.get_frame_duration(animation, frame_index) / playing_speed
+        if frame_index == sprite.frame:
+            duration *= 1.0 - sprite.frame_progress
+        remaining += duration
+    return remaining
+
+func _attack_wait_seconds(animation: String) -> float:
+    if not (_boss is Node2D):
+        return 0.0
+    var player := _boss.get("player") as Node2D
+    if player == null:
+        return 0.0
+    var bpm := maxf(float(_boss.get("bpm")), 1.0)
+    var dash_speed := maxf(float(_boss.get("dash_speed")), 1.0)
+    var boss_position := (_boss as Node2D).global_position
+    var player_position := player.global_position
+    var beat_seconds := 60.0 / bpm
+    if animation == "AttackUpReady":
+        var to_player := player_position - boss_position
+        var direction_to_player := to_player.normalized()
+        var direction_x := signf(to_player.x)
+        var offset := Vector2(_boss.get("attack_up_target_offset"))
+        offset.x *= direction_x
+        var target_position := player_position + offset - direction_to_player * ATTACK_UP_STOP_DISTANCE
+        var distance := boss_position.distance_to(target_position)
+        var max_dash_time := ATTACK_UP_TOTAL_BEATS * beat_seconds
+        var travel_time := clampf(distance / dash_speed, beat_seconds * 0.5, max_dash_time)
+        return maxf(0.0, max_dash_time - travel_time)
+    var direction := signf(player_position.x - boss_position.x)
+    if is_zero_approx(direction):
+        direction = float(_boss.get("face_direction"))
+    var target_x := player_position.x - direction * ATTACK_NORMAL_STOP_DISTANCE
+    var distance := absf(target_x - boss_position.x)
+    var max_dash_time := ATTACK_NORMAL_TOTAL_BEATS * beat_seconds
+    var travel_time := clampf(distance / dash_speed, beat_seconds * 0.5, max_dash_time)
+    return maxf(0.0, max_dash_time - travel_time)
+
+func _send_boss_telemetry(payload: Dictionary) -> void:
+    JavaScriptBridge.eval(
+        "window.__coffeeBeanBossTelemetry && window.__coffeeBeanBossTelemetry(%s);" % JSON.stringify(payload),
+        true
+    )
 
 func _configure(node: Node) -> void:
     if not is_instance_valid(node) or not node.is_inside_tree() or node.has_meta("coffeebean_hitbox"):

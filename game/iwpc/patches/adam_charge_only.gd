@@ -566,7 +566,16 @@ func get_action_weight(action: ActionType) -> float:
 func update_boss_action() -> void :
 	if is_player_killed:
 		return
-	execute_action(ActionType.AttackNormal)
+	execute_action(coffee_bean_next_action())
+
+
+func coffee_bean_next_action() -> ActionType:
+	if player != null:
+		var height_diff: float = boss.global_position.y - player.global_position.y
+		var distance: float = boss.global_position.distance_to(player.global_position)
+		if height_diff >= ATTACK_UP_HEIGHT_THRESHOLD and distance <= ATTACK_MAX_DISTANCE:
+			return ActionType.AttackUp
+	return ActionType.AttackNormal
 
 
 func execute_action(action: ActionType) -> void :

@@ -7,16 +7,39 @@
   <style>
     html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #050607; }
     #game-canvas { display: block; width: 100% !important; height: 100% !important; border: 0; outline: none; background: #050607; }
+    #boss-tas-hud { position: fixed; top: 12px; right: 12px; z-index: 10; width: min(248px, calc(100vw - 24px)); box-sizing: border-box; padding: 9px 10px; border: 1px solid rgba(255,255,255,.22); background: rgba(5,7,9,.88); color: #f3f5f7; font: 600 12px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace; pointer-events: none; }
+    #boss-tas-hud header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 6px; margin-bottom: 5px; border-bottom: 1px solid rgba(255,255,255,.13); color: #aeb7c2; font-size: 10px; }
+    #boss-tas-hud .hud-row { display: grid; grid-template-columns: 76px minmax(0,1fr); gap: 8px; padding: 2px 0; }
+    #boss-tas-hud .hud-label { color: #929ca8; font-weight: 500; }
+    #boss-tas-hud .hud-value { min-width: 0; overflow-wrap: anywhere; text-align: right; }
+    #boss-tas-hud[data-rng="locked"] #boss-rng-audit { color: #57df86; }
+    #boss-tas-hud[data-rng="desync"] #boss-rng-audit, #boss-tas-hud[data-rng="unavailable"] #boss-rng-audit { color: #ff5f59; }
+    #boss-tas-hud[data-rng="verifying"] #boss-rng-audit { color: #f4cc59; }
+    #boss-tas-hud[data-boss-active="true"] #boss-armor-frames { color: #ff7370; }
+    #boss-tas-hud[data-boss-active="true"] #boss-next-action { color: #d995ff; }
   </style>
 </head>
 <body>
   <canvas id="game-canvas" tabindex="1">Canvas is required.</canvas>
-  <script src="../../coffee-main.js?v=0.9.8"></script>
+  <aside id="boss-tas-hud" data-boss-active="false" data-rng="recording" aria-label="Boss TAS telemetry">
+    <header><span>HITBOX / BOSS TAS</span><span id="boss-animation">WAITING</span></header>
+    <div class="hud-row"><span class="hud-label">无敌解除</span><strong class="hud-value" id="boss-armor-frames">等待 Boss</strong></div>
+    <div class="hud-row"><span class="hud-label">下一招</span><strong class="hud-value" id="boss-next-action">等待 Boss</strong></div>
+    <div class="hud-row"><span class="hud-label">RNG</span><strong class="hud-value" id="boss-rng-audit">RECORDING</strong></div>
+    <div class="hud-row"><span class="hud-label">轨迹</span><strong class="hud-value" id="boss-rng-trace">0 PCG / 0F</strong></div>
+  </aside>
+  <script src="../../coffee-main.js?v=0.9.10"></script>
   <script src="godot.js"></script>
   <script>
     (() => {
       const CHANNEL = "coffeebean";
       const canvas = document.getElementById("game-canvas");
+      const bossHud = document.getElementById("boss-tas-hud");
+      const bossAnimation = document.getElementById("boss-animation");
+      const bossArmorFrames = document.getElementById("boss-armor-frames");
+      const bossNextAction = document.getElementById("boss-next-action");
+      const bossRngAudit = document.getElementById("boss-rng-audit");
+      const bossRngTrace = document.getElementById("boss-rng-trace");
       const runtimeId = typeof crypto.randomUUID === "function" ? crypto.randomUUID().slice(0, 8) : Math.random().toString(16).slice(2, 10);
       const runtimeStartedAt = performance.timeOrigin;
       const post = (type, detail) => window.parent.postMessage({ channel: CHANNEL, type, detail }, window.location.origin);
@@ -26,7 +49,42 @@
       // recording or restores a checkpoint; no untracked startup frames.
       if (window.__coffeeBean) window.__coffeeBean.command("pause");
 
-      document.addEventListener(`${CHANNEL}:status`, (event) => post("status", event.detail));
+      const renderRngAudit = (status) => {
+        const audit = status && status.rngAudit || { status: "UNAVAILABLE", verifiedFrames: 0 };
+        const state = String(audit.status || "UNAVAILABLE").toUpperCase();
+        const labels = {
+          RECORDING: "RECORDING",
+          VERIFYING: "VERIFYING",
+          LOCKED: `LOCKED / ${audit.verifiedFrames || 0}F`,
+          DESYNC: `DESYNC F${audit.desyncFrame == null ? "?" : audit.desyncFrame}`,
+          UNAVAILABLE: "UNAVAILABLE"
+        };
+        bossHud.dataset.rng = state.toLowerCase();
+        bossRngAudit.textContent = labels[state] || state;
+        bossRngAudit.title = audit.reason || "";
+        const candidates = status && status.rng && Number(status.rng.candidates) || 0;
+        bossRngTrace.textContent = `${candidates} PCG / ${audit.verifiedFrames || 0}F verified`;
+      };
+      window.__coffeeBeanBossTelemetry = (payload) => {
+        const active = !!(payload && payload.active);
+        bossHud.dataset.bossActive = String(active);
+        if (!active) {
+          bossAnimation.textContent = "WAITING";
+          bossArmorFrames.textContent = "等待 Boss";
+          bossNextAction.textContent = "等待 Boss";
+          return;
+        }
+        bossAnimation.textContent = payload.animation || "ACTIVE";
+        bossNextAction.textContent = payload.nextAction || "--";
+        if (!payload.superArmor) bossArmorFrames.textContent = "可攻击";
+        else if (Number(payload.remainingFrames) >= 0) bossArmorFrames.textContent = `${Math.ceil(Number(payload.remainingFrames))}F`;
+        else bossArmorFrames.textContent = "计算中";
+      };
+
+      document.addEventListener(`${CHANNEL}:status`, (event) => {
+        try { renderRngAudit(JSON.parse(event.detail)); } catch (_) {}
+        post("status", event.detail);
+      });
       document.addEventListener(`${CHANNEL}:game-reload-request`, (event) => {
         if (!event.detail || !event.detail.fullReload) return;
         event.preventDefault();

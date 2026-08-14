@@ -5,7 +5,7 @@
   if (window.__coffeeBean) return;
 
   const CHANNEL = "coffeebean";
-  const VERSION = "0.9.8";
+  const VERSION = "0.9.10";
   const PENDING_RELOAD_KEY = `${CHANNEL}:pending-reload`;
   // IWPC's project.binary stores physics/common/physics_ticks_per_second = 120.
   // TAS frames are Godot physics ticks, not a user-selected monitor rate.
@@ -86,6 +86,7 @@
   const syntheticPointerEvents = new WeakSet();
   let recorder;
   let rng;
+  let rngAudit = createRngAudit("RECORDING");
 
   try {
     const pending = window.sessionStorage && window.sessionStorage.getItem(PENDING_RELOAD_KEY);
@@ -96,6 +97,20 @@
   }
 
   function clone(value) { return JSON.parse(JSON.stringify(value)); }
+  function createRngAudit(status, detail = {}) {
+    return Object.assign({
+      status,
+      verifiedFrames: 0,
+      baselineFrame: null,
+      desyncFrame: null,
+      expected: null,
+      actual: null,
+      reason: ""
+    }, detail);
+  }
+  function resetRngAudit(status = "RECORDING", detail = {}) {
+    rngAudit = createRngAudit(status, detail);
+  }
   function normalizeFrameRate(value) {
     const parsed = Number(value);
     return PROJECT_FRAME_RATE;
@@ -183,6 +198,7 @@
       savestateBusy: stateBusy,
       rerecords,
       rng: rng ? rng.getStatus() : { detected: false, reason: "initializing" },
+      rngAudit: Object.assign({ candidates: rng ? rng.candidateCount : 0 }, rngAudit),
       rngRecordedFrames: recorder ? recorder.rngRecordedFrames : 0,
       url: String(window.location.href)
     };
@@ -307,7 +323,7 @@
       catch (_) { return false; }
     }
     ensure(force = false) {
-      if (this.isValid()) return true;
+      if (!force && this.isValid()) return true;
       this.address = null;
       const now = nativeNow();
       if (!force && now - this.lastScan < 1000) return false;
@@ -374,6 +390,7 @@
       return Object.assign({
         detected: true,
         reason: this.reason,
+        candidates: this.candidateCount,
         address: `0x${this.address.toString(16)}`,
         nextRandf: previewRandf(state, inc).toPrecision(9)
       }, snapshot);
@@ -703,6 +720,7 @@
     stepBudget = 0;
     nextFrameDeadline = null;
     resetFrameRateMeasurement();
+    resetRngAudit("RECORDING");
     const result = { frame: control.frame, targetFrame: session ? session.targetFrame : video.pauseFrame, playing: false, takeover: true, rerecords };
     if (session && session.resolve) session.resolve(result);
     emitStatus();
@@ -715,6 +733,7 @@
     recorder.video.initialDirection = initialDirection;
     recorder.rngStates = [];
     recorder.rngRecordedFrames = 0;
+    resetRngAudit("RECORDING");
     control = { frame: 0, paused: !!pauseAfter, speed: control.speed };
     nextFrameDeadline = null;
     resetFrameRateMeasurement();
@@ -763,6 +782,7 @@
     recorder.video.initialDirection = initialDirection;
     recorder.rngStates = [];
     recorder.rngRecordedFrames = 0;
+    resetRngAudit("RECORDING");
     cancelPlayback("Playback was cancelled by a new recording");
     control.frame = 0;
     recordingStartTime = fakeTime;
@@ -912,6 +932,7 @@
     replayVideo.pauseFrame = saved.frame;
     replayVideo.rngRuns = statesToRuns(saved.rngStates);
     playback = new VideoPlayer(replayVideo);
+    resetRngAudit("VERIFYING");
     let resolveCompletion;
     let rejectCompletion;
     const completion = new Promise((resolve, reject) => { resolveCompletion = resolve; rejectCompletion = reject; });
@@ -1236,17 +1257,70 @@
     });
   }
   function prepareRngFrame() {
-    if (!config.rng.enabled || !rng.ensure()) return;
-    if (playback && config.rng.playback) {
-      const state = playback.getRngState(control.frame);
-      if (state) rng.restoreState(state);
-    } else if (!playback && config.rng.record) {
+    if (playback) {
+      const expected = playback.getRngState(control.frame);
+      if (!config.rng.enabled || !config.rng.playback) {
+        resetRngAudit("UNAVAILABLE", { reason: "RNG playback control is disabled" });
+        pauseForRngAudit();
+        return false;
+      }
+      if (!expected) {
+        resetRngAudit("UNAVAILABLE", { reason: `Replay has no RNG state at frame ${control.frame}` });
+        pauseForRngAudit();
+        return false;
+      }
+      if (!rng.ensure()) {
+        resetRngAudit("UNAVAILABLE", { reason: rng.reason });
+        pauseForRngAudit();
+        return false;
+      }
+      if (rngAudit.baselineFrame === null) {
+        rng.restoreState(expected);
+        resetRngAudit("VERIFYING", { baselineFrame: control.frame, expected });
+        return true;
+      }
+      const snapshot = rng.snapshot();
+      const actual = snapshot && snapshot.state;
+      if (!actual || actual !== expected) {
+        rngAudit = createRngAudit("DESYNC", {
+          verifiedFrames: rngAudit.verifiedFrames,
+          baselineFrame: rngAudit.baselineFrame,
+          desyncFrame: control.frame,
+          expected,
+          actual,
+          reason: actual ? "Godot PCG state diverged from the recorded trace" : rng.reason
+        });
+        pauseForRngAudit();
+        return false;
+      }
+      rng.restoreState(expected);
+      rngAudit = createRngAudit("LOCKED", {
+        verifiedFrames: rngAudit.verifiedFrames + 1,
+        baselineFrame: rngAudit.baselineFrame,
+        expected,
+        actual
+      });
+    } else if (config.rng.enabled && config.rng.record && rng.ensure()) {
+      if (rngAudit.status !== "RECORDING") resetRngAudit("RECORDING");
       const snapshot = rng.snapshot();
       if (snapshot) {
         if (!recorder.rngStates[control.frame]) recorder.rngRecordedFrames++;
         recorder.rngStates[control.frame] = snapshot.state;
       }
+    } else if (!playback) {
+      resetRngAudit("UNAVAILABLE", { reason: config.rng.enabled ? rng.reason : "RNG recording is disabled" });
     }
+    return true;
+  }
+  function pauseForRngAudit() {
+    control.paused = true;
+    control.speed = 0;
+    playbackSpeed = "normal";
+    nextFrameDeadline = null;
+    stepBudget = 0;
+    resetFrameRateMeasurement();
+    if (!pausedCallback) pausedCallback = lastRafCallback;
+    emitStatus();
   }
   function normalFrameDelay() {
     const now = nativeNow();
@@ -1298,8 +1372,8 @@
         pumpStep();
         return;
       }
+      if (!prepareRngFrame()) return;
       fakeTime += frameLength;
-      prepareRngFrame();
       if (playback) applyPlaybackFrame();
       else {
         applyQueuedMouseFrame();
@@ -1369,6 +1443,7 @@
   function onScene(name) {
     if (!fullgameVideo || !fullgameVideo[name]) return;
     playback = new VideoPlayer(new Video(fullgameVideo[name]));
+    resetRngAudit("VERIFYING");
     control.paused = false;
     control.frame = 0;
     control.speed = 1;

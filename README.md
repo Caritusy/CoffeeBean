@@ -84,6 +84,8 @@ node test/server.mjs --open
 
 - 录制和回放统一使用游戏工程配置的 120 Hz 物理帧率。
 - 每一帧都会记录键盘、画布鼠标输入以及 Godot PCG32 随机数状态。
+- 回放会严格核对唯一的 Godot PCG32 轨迹；出现第二套 RNG 状态时立即停在首个偏差帧。
+- 亚当重锤在两个运行版本中都只保留直拳和升龙：玩家位于高处且在原版攻击距离内时升龙，否则直拳。
 - 读取不是恢复不完整的 WASM 内存快照，而是销毁并重新创建游戏 iframe，再以正常速度确定性回放。
 - 回放可以暂停，并切换到录制模式接管当前路线。
 - 实验性快进目前禁用，因为它会破坏 IWPC 的异步场景和节拍系统。
@@ -92,8 +94,8 @@ node test/server.mjs --open
 
 | 页面模式 | 游戏包 | 用途 |
 |---|---|---|
-| TAS / Hitboxes | `game/iwpc/index_hitbox.pck` | TAS 录制与碰撞判定观察 |
-| Production / Clean | `game/iwpc/index_charge_fast.pck` | 无碰撞箱成片录制 |
+| TAS / Hitboxes | `game/iwpc/index_hitbox.pck` | TAS 录制、碰撞判定、Boss 无敌帧/下一招与 RNG 轨迹观察 |
+| Production / Clean | `game/iwpc/index_charge_fast.pck` | 与 TAS 版相同游戏逻辑的无碰撞箱成片录制 |
 
 发布版还包含原始游戏包 `game/iwpc/index.pck`。这些 PCK 与 WASM 运行资源不会进入 Git 历史。
 

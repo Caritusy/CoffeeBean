@@ -176,7 +176,7 @@
   }
 
   const proxy = {
-    version: "0.9.8",
+    version: "0.9.10",
     getStatus: () => latestStatus,
     configure(config) {
       queuedConfig = config;
